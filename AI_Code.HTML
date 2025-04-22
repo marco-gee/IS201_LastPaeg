@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cowboy Minesweeper</title>
+    <style>
+        /* Basic styling for the game */
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f4f4f4;
+            flex-direction: column; /* Stack elements vertically */
+        }
+
+        .game-container {
+            background-color: #bdbdbd;
+            padding: 15px;
+            border: 3px solid #888;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: inline-block; /* Fit content size */
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #c0c0c0;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            border: 2px outset #eee;
+            border-radius: 3px;
+        }
+
+        .status, .cowboy-count {
+            font-size: 1.2em;
+            font-weight: bold;
+            background-color: #333;
+            color: #ff4d4d; /* Reddish color like old LCDs */
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-family: 'Courier New', Courier, monospace;
+            min-width: 50px; /* Ensure minimum width */
+            text-align: center;
+        }
+
+        .reset-button {
+            font-size: 1.5em; /* Make emoji button bigger */
+            padding: 5px;
+            border: 2px outset #eee;
+            background-color: #d0d0d0;
+            cursor: pointer;
+            border-radius: 3px;
+            line-height: 1; /* Adjust line height for emoji */
+        }
+        .reset-button:active {
+            border-style: inset;
+        }
+
+        .grid {
+            display: grid;
+            /* Grid columns defined by JS */
+            /* Grid rows defined implicitly */
+            gap: 1px; /* Small gap between cells */
+            border: 3px solid #888; /* Border around the grid */
+            background-color: #888; /* Background color for gaps */
+        }
+
+        .cell {
+            width: 30px;
+            height: 30px;
+            background-color: #c0c0c0; /* Default hidden cell color */
+            border: 2px outset #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none; /* Prevent text selection */
+            position: relative; /* For potential future overlays */
+        }
+
+        .cell.revealed {
+            background-color: #bdbdbd; /* Revealed cell color */
+            border: 1px solid #9e9e9e; /* Flatter border */
+            cursor: default;
+        }
+
+        .cell.flagged {
+           /* Background remains hidden, but content changes */
+           font-size: 1.3em; /* Make flag emoji slightly larger */
+        }
+
+        .cell.mine-hit {
+            background-color: #ff7b7b; /* Red background for hit mine */
+        }
+
+        /* Number Colors */
+        .cell[data-count="1"] { color: #0000ff; } /* Blue */
+        .cell[data-count="2"] { color: #008000; } /* Green */
+        .cell[data-count="3"] { color: #ff0000; } /* Red */
+        .cell[data-count="4"] { color: #000080; } /* Navy */
+        .cell[data-count="5"] { color: #800000; } /* Maroon */
+        .cell[data-count="6"] { color: #008080; } /* Teal */
+        .cell[data-count="7"] { color: #000000; } /* Black */
+        .cell[data-count="8"] { color: #808080; } /* Gray */
+
+    </style>
+</head>
+<body>
+<a href="../startbootstrap-resume-gh-pages/ScratchIndex.html">Go Home</a>
+    <div class="game-container">
+        <div class="header">
+            <div class="cowboy-count" id="cowboy-count">--</div>
+            <button class="reset-button" id="reset-button">😊</button>
+            <div class="status" id="status-message">Loading...</div>
+        </div>
+        <div class="grid" id="grid">
+            </div>
+    </div>
+
+    <script>
+        // --- Game Constants ---
+        const ROWS = 10; // Number of rows
+        const COLS = 10; // Number of columns
+        const MINES = 15; // Number of cowboys (mines)
+
+        const MINE_EMOJI = '🤠';
+        const FLAG_EMOJI = '🌹'; // Rose for flag
+        const HAPPY_EMOJI = '😊';
+        const SAD_EMOJI = '😵';
+        const WIN_EMOJI = '🥳'; // Or '😎'
+
+        // --- DOM Elements ---
+        const gridElement = document.getElementById('grid');
+        const cowboyCountElement = document.getElementById('cowboy-count');
+        const statusMessageElement = document.getElementById('status-message');
+        const resetButton = document.getElementById('reset-button');
+
+        // --- Game State Variables ---
+        let board = []; // 2D array representing the game board
+        let minesPlaced = false; // Flag to check if mines have been placed
+        let gameOver = false;
+        let gameWon = false;
+        let flagsPlaced = 0;
+        let revealedCells = 0;
+        let firstClick = true; // To ensure the first click is safe
+
+        // --- Game Logic Functions ---
+
+        /**
+         * Initializes the game state and renders the board.
+         */
+        function initGame() {
+            // Reset state variables
+            board = [];
+            minesPlaced = false;
+            gameOver = false;
+            gameWon = false;
+            flagsPlaced = 0;
+            revealedCells = 0;
+            firstClick = true;
+
+            // Reset UI elements
+            statusMessageElement.textContent = "Good Luck!";
+            resetButton.textContent = HAPPY_EMOJI;
+            updateCowboyCount();
+
+            // Create the board data structure (without mines initially)
+            for (let r = 0; r < ROWS; r++) {
+                board[r] = [];
+                for (let c = 0; c < COLS; c++) {
+                    board[r][c] = {
+                        isMine: false,
+                        isRevealed: false,
+                        isFlagged: false,
+                        adjacentMines: 0,
+                        element: null // Reference to the DOM element
+                    };
+                }
+            }
+
+            // Render the initial grid (all hidden cells)
+            renderBoard();
+
+            // Add event listeners (delegated to the grid container)
+            gridElement.addEventListener('click', handleLeftClick);
+            gridElement.addEventListener('contextmenu', handleRightClick);
+            resetButton.addEventListener('click', initGame); // Reset on button click
+        }
+
+        /**
+         * Places mines randomly on the board, avoiding the first clicked cell and its neighbors.
+         * @param {number} initialRow - The row of the first click.
+         * @param {number} initialCol - The column of the first click.
+         */
+        function placeMines(initialRow, initialCol) {
+            let minesToPlace = MINES;
+            while (minesToPlace > 0) {
+                const r = Math.floor(Math.random() * ROWS);
+                const c = Math.floor(Math.random() * COLS);
+
+                // Check if the cell is the initial click or its neighbor, or already a mine
+                const isInitialOrNeighbor = Math.abs(r - initialRow) <= 1 && Math.abs(c - initialCol) <= 1;
+
+                if (!board[r][c].isMine && !isInitialOrNeighbor) {
+                    board[r][c].isMine = true;
+                    minesToPlace--;
+                }
+            }
+            minesPlaced = true; // Mark mines as placed
+
+            // Calculate adjacent mine counts for all cells AFTER placing mines
+            calculateAdjacentMines();
+        }
+
+        /**
+         * Calculates the number of adjacent mines for each cell.
+         */
+        function calculateAdjacentMines() {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c].isMine) continue; // Skip mines themselves
+
+                    let count = 0;
+                    getNeighbors(r, c).forEach(([nr, nc]) => {
+                        if (board[nr][nc].isMine) {
+                            count++;
+                        }
+                    });
+                    board[r][c].adjacentMines = count;
+                }
+            }
+        }
+
+        /**
+         * Renders the visual grid based on the current board state.
+         */
+        function renderBoard() {
+            gridElement.innerHTML = ''; // Clear previous grid
+            gridElement.style.gridTemplateColumns = `repeat(${COLS}, 30px)`; // Set grid columns
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const cellData = board[r][c];
+                    const cellElement = document.createElement('div');
+                    cellElement.classList.add('cell');
+                    cellElement.dataset.row = r;
+                    cellElement.dataset.col = c;
+
+                    // Store reference to DOM element in board data
+                    cellData.element = cellElement;
+
+                    // Set appearance based on state
+                    if (cellData.isRevealed) {
+                        cellElement.classList.add('revealed');
+                        if (cellData.isMine) {
+                            cellElement.textContent = MINE_EMOJI;
+                            // Keep track if this was the mine that ended the game
+                            // (Can be done in revealAllMines or handleLeftClick)
+                        } else if (cellData.adjacentMines > 0) {
+                            cellElement.textContent = cellData.adjacentMines;
+                            cellElement.dataset.count = cellData.adjacentMines; // For CSS styling
+                        } else {
+                            // Empty revealed cell (no number)
+                        }
+                    } else if (cellData.isFlagged) {
+                        cellElement.classList.add('flagged');
+                        cellElement.textContent = FLAG_EMOJI;
+                    } else {
+                        // Cell is hidden, no content needed unless adding textures
+                    }
+
+                    gridElement.appendChild(cellElement);
+                }
+            }
+        }
+
+        /**
+         * Handles left-click events on the grid cells.
+         * @param {Event} event - The click event object.
+         */
+        function handleLeftClick(event) {
+            if (gameOver || gameWon) return; // Game already ended
+
+            const cellElement = event.target.closest('.cell'); // Find the clicked cell element
+            if (!cellElement) return; // Clicked on grid gap
+
+            const row = parseInt(cellElement.dataset.row);
+            const col = parseInt(cellElement.dataset.col);
+            const cellData = board[row][col];
+
+            if (cellData.isRevealed || cellData.isFlagged) {
+                return; // Ignore clicks on revealed or flagged cells
+            }
+
+            // --- First Click Logic ---
+            if (firstClick) {
+                placeMines(row, col); // Place mines away from the first click
+                firstClick = false; // Only happens once per game
+            }
+
+            // --- Reveal Logic ---
+            if (cellData.isMine) {
+                // Game Over - Hit a mine!
+                revealCell(row, col); // Show the hit mine
+                cellElement.classList.add('mine-hit'); // Highlight the hit mine
+                triggerGameOver(false); // false indicates loss
+            } else {
+                revealCell(row, col); // Reveal the safe cell
+                // Check for win after revealing
+                checkWinCondition();
+            }
+        }
+
+        /**
+         * Handles right-click events (context menu) for flagging cells.
+         * @param {Event} event - The contextmenu event object.
+         */
+        function handleRightClick(event) {
+            event.preventDefault(); // Prevent the default context menu
+            if (gameOver || gameWon) return;
+
+            const cellElement = event.target.closest('.cell');
+            if (!cellElement) return;
+
+            const row = parseInt(cellElement.dataset.row);
+            const col = parseInt(cellElement.dataset.col);
+            const cellData = board[row][col];
+
+            if (cellData.isRevealed) {
+                return; // Cannot flag revealed cells
+            }
+
+            // Toggle flag
+            cellData.isFlagged = !cellData.isFlagged;
+
+            if (cellData.isFlagged) {
+                flagsPlaced++;
+                cellElement.classList.add('flagged');
+                cellElement.textContent = FLAG_EMOJI;
+            } else {
+                flagsPlaced--;
+                cellElement.classList.remove('flagged');
+                cellElement.textContent = ''; // Clear emoji
+            }
+
+            updateCowboyCount();
+            // Optional: Check win condition here too, if flagging last mine wins
+             checkWinCondition();
+        }
+
+        /**
+         * Reveals a single cell and potentially triggers adjacent reveals.
+         * @param {number} row - The row of the cell to reveal.
+         * @param {number} col - The column of the cell to reveal.
+         */
+        function revealCell(row, col) {
+            const cellData = board[row][col];
+
+            // Base cases for recursion/stopping
+            if (!isValid(row, col) || cellData.isRevealed || cellData.isFlagged) {
+                return;
+            }
+
+            cellData.isRevealed = true;
+            revealedCells++;
+            const cellElement = cellData.element; // Get reference from board data
+            cellElement.classList.add('revealed');
+            cellElement.classList.remove('flagged'); // Remove flag if revealed
+
+            if (cellData.isMine) {
+                cellElement.textContent = MINE_EMOJI;
+                // Game over logic is handled in handleLeftClick
+            } else if (cellData.adjacentMines > 0) {
+                cellElement.textContent = cellData.adjacentMines;
+                cellElement.dataset.count = cellData.adjacentMines;
+            } else {
+                // Adjacent count is 0, reveal neighbors recursively
+                getNeighbors(row, col).forEach(([nr, nc]) => {
+                    revealCell(nr, nc); // Recursive call
+                });
+            }
+        }
+
+        /**
+         * Checks if the win condition has been met.
+         */
+        function checkWinCondition() {
+             // Win if all non-mine cells are revealed
+             const nonMineCells = ROWS * COLS - MINES;
+             if (revealedCells === nonMineCells) {
+                 triggerGameOver(true); // true indicates win
+                 return true;
+             }
+
+             // Alternative win condition: all mines flagged correctly (optional)
+             // let correctlyFlaggedMines = 0;
+             // if (flagsPlaced === MINES) {
+             //     for (let r = 0; r < ROWS; r++) {
+             //         for (let c = 0; c < COLS; c++) {
+             //             if (board[r][c].isFlagged && board[r][c].isMine) {
+             //                 correctlyFlaggedMines++;
+             //             }
+             //         }
+             //     }
+             //     if (correctlyFlaggedMines === MINES) {
+             //         triggerGameOver(true);
+             //         return true;
+             //     }
+             // }
+
+             return false;
+        }
+
+        /**
+         * Ends the game, revealing mines and updating status.
+         * @param {boolean} won - True if the player won, false otherwise.
+         */
+        function triggerGameOver(won) {
+            gameOver = true;
+            gameWon = won;
+
+            // Remove event listeners to prevent further interaction
+            gridElement.removeEventListener('click', handleLeftClick);
+            gridElement.removeEventListener('contextmenu', handleRightClick);
+
+            revealAllMines(won); // Show all mine locations
+
+            if (won) {
+                statusMessageElement.textContent = "You Win!";
+                resetButton.textContent = WIN_EMOJI; // Or 😎
+                 // Correct flag count on win
+                 flagsPlaced = MINES;
+                 updateCowboyCount();
+            } else {
+                statusMessageElement.textContent = "Game Over!";
+                resetButton.textContent = SAD_EMOJI;
+            }
+        }
+
+        /**
+         * Reveals all mine locations at the end of the game.
+         * Also handles incorrect flags if the player lost.
+         * @param {boolean} won - Indicates if the player won.
+         */
+        function revealAllMines(won) {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const cellData = board[r][c];
+                    const cellElement = cellData.element;
+
+                    if (cellData.isMine && !cellData.isRevealed && !cellData.isFlagged) {
+                        // Reveal unflagged mines
+                        cellElement.classList.add('revealed'); // Show background
+                        cellElement.textContent = MINE_EMOJI;
+                    } else if (!cellData.isMine && cellData.isFlagged) {
+                        // Incorrectly flagged cell (only show if lost)
+                        if (!won) {
+                            cellElement.textContent = '❌'; // Indicate wrong flag
+                            cellElement.style.backgroundColor = '#ffdddd'; // Highlight wrong flag
+                        }
+                    } else if (cellData.isMine && cellData.isFlagged) {
+                         // Correctly flagged mine (if winning, ensure flower stays)
+                         if (won) {
+                             cellElement.textContent = FLAG_EMOJI; // Keep flag on win
+                         } else {
+                             // Optionally show mine under flag on loss
+                             // cellElement.textContent = MINE_EMOJI;
+                         }
+                    }
+                }
+            }
+        }
+
+
+        /**
+         * Updates the cowboy (mine) counter display.
+         */
+        function updateCowboyCount() {
+            const count = MINES - flagsPlaced;
+            cowboyCountElement.textContent = String(count).padStart(2, '0'); // Pad with leading zero if needed
+        }
+
+        /**
+         * Gets the valid neighbor coordinates for a given cell.
+         * @param {number} row - The row of the cell.
+         * @param {number} col - The column of the cell.
+         * @returns {Array<Array<number>>} An array of [row, col] pairs for valid neighbors.
+         */
+        function getNeighbors(row, col) {
+            const neighbors = [];
+            for (let rOffset = -1; rOffset <= 1; rOffset++) {
+                for (let cOffset = -1; cOffset <= 1; cOffset++) {
+                    if (rOffset === 0 && cOffset === 0) continue; // Skip self
+                    const nr = row + rOffset;
+                    const nc = col + cOffset;
+                    if (isValid(nr, nc)) {
+                        neighbors.push([nr, nc]);
+                    }
+                }
+            }
+            return neighbors;
+        }
+
+        /**
+         * Checks if a given row and column are within the board boundaries.
+         * @param {number} row
+         * @param {number} col
+         * @returns {boolean} True if the coordinates are valid, false otherwise.
+         */
+        function isValid(row, col) {
+            return row >= 0 && row < ROWS && col >= 0 && col < COLS;
+        }
+
+        // --- Start the Game ---
+        initGame();
+
+    </script>
+
+</body>
+</html>

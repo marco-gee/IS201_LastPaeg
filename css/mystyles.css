@@ -1,0 +1,21 @@
+.my_serif_text{
+    font-family: serif;
+}
+.my_special_color{
+    color:darkolivegreen !important;
+}
+a{
+    color:darkolivegreen !important;
+}
+.my_background_color{
+    background-color:darkolivegreen !important;
+}
+   .my_work_dates{
+    color:darkolivegreen !important;
+  }
+  .my_anchor{
+    color:rgb(245, 238, 213) !important;
+  }
+  .my_for_real_background{
+    background-color:rgb(245, 238, 213) !important; 
+  }
